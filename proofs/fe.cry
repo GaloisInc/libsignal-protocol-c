@@ -1,0 +1,16 @@
+import Cryptol::Extras
+
+bound : [32] -> [32] -> Bit
+bound x b = (-b) < x /\ x < b
+
+valid_fe : [32] -> [32] -> [10][32] -> Bit
+valid_fe even odd fe =
+  bound (fe@0) even /\ bound (fe@1) odd /\
+  bound (fe@2) even /\ bound (fe@3) odd /\
+  bound (fe@4) even /\ bound (fe@5) odd /\
+  bound (fe@6) even /\ bound (fe@7) odd /\
+  bound (fe@8) even /\ bound (fe@9) odd
+
+e24 = 18454938 // roundup(1.1 * 2^24)
+e25 = 36909876 // roundup(1.1 * 2^25)
+e26 = 73819751 // roundup(1.1 * 2^26)
