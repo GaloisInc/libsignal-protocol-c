@@ -1,16 +1,54 @@
 import Cryptol::Extras
 
+uext : {a, b} (fin b,fin a) => [a] -> [a+b]
+uext(x) = zero # x
+
+iext : {a, b} (fin b,fin a) => [a] -> [a+b]
+iext(x) = (if x@0 then ~zero else zero) # x
+
+value : [10][32] -> [512]
+value [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9] =
+  iext x0 +
+  iext x1 * (1 <<  26) +
+  iext x2 * (1 <<  51) +
+  iext x3 * (1 <<  77) +
+  iext x4 * (1 << 102) +
+  iext x5 * (1 << 128) +
+  iext x6 * (1 << 153) +
+  iext x7 * (1 << 179) +
+  iext x8 * (1 << 204) +
+  iext x9 * (1 << 230)
+
 bound : [32] -> [32] -> Bit
-bound x b = (-b) < x /\ x < b
+bound b x = -b <= x /\ x <= b
 
 valid_fe : [32] -> [32] -> [10][32] -> Bit
 valid_fe even odd fe =
-  bound (fe@0) even /\ bound (fe@1) odd /\
-  bound (fe@2) even /\ bound (fe@3) odd /\
-  bound (fe@4) even /\ bound (fe@5) odd /\
-  bound (fe@6) even /\ bound (fe@7) odd /\
-  bound (fe@8) even /\ bound (fe@9) odd
+  be (fe@0) /\ bo (fe@1) /\
+  be (fe@2) /\ bo (fe@3) /\
+  be (fe@4) /\ bo (fe@5) /\
+  be (fe@6) /\ bo (fe@7) /\
+  be (fe@8) /\ bo (fe@9)
+    where
+      be = bound even
+      bo = bound odd
 
 e24 = 18454938 // roundup(1.1 * 2^24)
 e25 = 36909876 // roundup(1.1 * 2^25)
 e26 = 73819751 // roundup(1.1 * 2^26)
+
+m25 = 55364812
+m26 = 110729626
+m24post = 33889977
+m25post = 16944989
+
+add_valid_fe = valid_fe e25 e24
+mul_valid_fe = valid_fe m26 m25
+
+property add_good x y =
+  add_valid_fe x /\ add_valid_fe y ==>
+  value (x + y) == (value x) + (value y)
+
+property sub_good x y =
+  add_valid_fe x /\ add_valid_fe y ==>
+  value (x - y) == (value x) - (value y)

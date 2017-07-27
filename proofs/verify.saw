@@ -3,55 +3,78 @@ import "fe.cry";
 print "Loading LLVM module...";
 m <- llvm_load_module "curve25519.bc";
 
-let fresh_fe nm = do {
-    let ty = llvm_array 10 (llvm_int 32);
-    fe <- crucible_fresh_var nm ty;
-    fep <- crucible_alloc ty;
-    crucible_points_to fep (crucible_term fe);
+////////////////////////////////////////////////////////////////////////////////
+// Generic utilities
+////////////////////////////////////////////////////////////////////////////////
+
+let alloc_fresh nm ty = do {
+    x <- crucible_fresh_var nm ty;
+    p <- crucible_alloc ty;
+    crucible_points_to p (crucible_term x);
+    return (p, x);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Field Element Specs
+////////////////////////////////////////////////////////////////////////////////
+
+let fresh_fe nm = alloc_fresh nm (llvm_array 10 (llvm_int 32));
+
+let fresh_fe_bound nm even odd = do {
+    (fep, fe) <- fresh_fe nm;
+    crucible_precond {{ valid_fe even odd fe }};
     return (fep, fe);
 };
 
+let assign_fe p fe even odd = do {
+    crucible_points_to p (crucible_term fe);
+    crucible_postcond {{ valid_fe even odd fe }};
+};
+
 let fe_binop_spec op = do {
-    (fp, f) <- fresh_fe "f";
-    (gp, g) <- fresh_fe "g";
+    (fp, f) <- fresh_fe_bound "f" {{ e25 }} {{ e24 }};
+    (gp, g) <- fresh_fe_bound "g" {{ e25 }} {{ e24 }};
     (hp, h) <- fresh_fe "h";
-    crucible_precond {{ valid_fe e25 e24 f }};
-    crucible_precond {{ valid_fe e25 e24 g }};
 
     crucible_execute_func [hp, fp, gp];
 
     crucible_points_to fp (crucible_term f);
     crucible_points_to gp (crucible_term g);
-    let h' = {{ op f g }};
-    crucible_points_to hp (crucible_term h');
-    crucible_postcond {{ valid_fe e26 e25 h' }};
+    assign_fe hp {{ op f g }} {{ e26 }} {{ e25 }};
 };
 
 let fe_unop_spec op = do {
-    (fp, f) <- fresh_fe "f";
+    (fp, f) <- fresh_fe_bound "f" {{ e25 }} {{ e24 }};
     (hp, h) <- fresh_fe "h";
-    crucible_precond {{ valid_fe e25 e24 f }};
     
     crucible_execute_func [hp, fp];
 
     crucible_points_to fp (crucible_term f);
-    let h' = {{ op f }};
-    crucible_points_to hp (crucible_term h');
-    crucible_postcond {{ valid_fe e25 e24 h' }};
+    assign_fe hp {{ op f }} {{ e25 }} {{ e24 }};
 };
 
+////////////////////////////////////////////////////////////////////////////////
+// Verification
+////////////////////////////////////////////////////////////////////////////////
+
 let prefix = "crypto_sign_ed25519_ref10_";
-let fname nm = str_concat prefix nm;
+let refname nm = str_concat prefix nm;
 
 let neg = {{ negate }};
 let add = {{ (+) }};
 let sub = {{ (-) }};
 
+print "Proving abstract field addition...";
+prove_print yices {{ add_good }};
+
+print "Proving abstract field subtraction...";
+prove_print yices {{ sub_good }};
+
 print "Proving fe_neg...";
-crucible_llvm_verify m (fname "fe_neg") [] false (fe_unop_spec neg) yices;
+crucible_llvm_verify m (refname "fe_neg") [] false (fe_unop_spec neg) yices;
 
 print "Proving fe_add...";
-crucible_llvm_verify m (fname "fe_add") [] false (fe_binop_spec add) yices;
+crucible_llvm_verify m (refname "fe_add") [] false (fe_binop_spec add) yices;
 
 print "Proving fe_sub...";
-crucible_llvm_verify m (fname "fe_sub") [] false (fe_binop_spec sub) yices;
+crucible_llvm_verify m (refname "fe_sub") [] false (fe_binop_spec sub) yices;
