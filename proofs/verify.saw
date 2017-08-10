@@ -15,10 +15,14 @@ let alloc_fresh nm ty = do {
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-// Field Element Specs
+// Simple Field Element Specs
 ////////////////////////////////////////////////////////////////////////////////
 
-let fresh_fe nm = alloc_fresh nm (llvm_array 10 (llvm_int 32));
+let fe_type = llvm_array 10 (llvm_int 32);
+let bytes_type = llvm_array 32 (llvm_int 8);
+
+let fresh_fe nm = alloc_fresh nm fe_type;
+let fresh_bytes nm = alloc_fresh nm bytes_type;
 
 let fresh_fe_bound nm even odd = do {
     (fep, fe) <- fresh_fe nm;
@@ -31,10 +35,22 @@ let assign_fe p fe even odd = do {
     crucible_postcond {{ valid_fe even odd fe }};
 };
 
+let fe_0_spec = do {
+    hp <- crucible_alloc fe_type;
+    crucible_execute_func [hp];
+    crucible_points_to hp (crucible_term {{ zero : [10][32] }});
+};
+
+let fe_1_spec = do {
+    hp <- crucible_alloc fe_type;
+    crucible_execute_func [hp];
+    crucible_points_to hp (crucible_term {{ reverse (split (1 : [320]) : [10][32]) }});
+};
+
 let fe_binop_spec op = do {
     (fp, f) <- fresh_fe_bound "f" {{ e25 }} {{ e24 }};
     (gp, g) <- fresh_fe_bound "g" {{ e25 }} {{ e24 }};
-    (hp, h) <- fresh_fe "h";
+    hp <- crucible_alloc fe_type;
 
     crucible_execute_func [hp, fp, gp];
 
@@ -43,18 +59,87 @@ let fe_binop_spec op = do {
     assign_fe hp {{ op f g }} {{ e26 }} {{ e25 }};
 };
 
+let fe_cmov_spec = do {
+    (fp, f) <- fresh_fe "f";
+    (gp, g) <- fresh_fe "g";
+    b <- crucible_fresh_var "b" (llvm_int 32);
+    crucible_precond {{ b == 0 \/ b == 1 }};
+
+    crucible_execute_func [fp, gp, crucible_term b];
+
+    crucible_points_to fp (crucible_term {{ if b == 0 then f else g }});
+    crucible_points_to gp (crucible_term g);
+};
+
 let fe_unop_spec op = do {
     (fp, f) <- fresh_fe_bound "f" {{ e25 }} {{ e24 }};
-    (hp, h) <- fresh_fe "h";
-    
+    hp <- crucible_alloc fe_type;
+
     crucible_execute_func [hp, fp];
 
     crucible_points_to fp (crucible_term f);
     assign_fe hp {{ op f }} {{ e25 }} {{ e24 }};
 };
 
+let fe_copy_spec = do {
+    (fp, f) <- fresh_fe "f";
+    hp <- crucible_alloc fe_type;
+
+    crucible_execute_func [hp, fp];
+
+    crucible_points_to fp (crucible_term f);
+    crucible_points_to hp (crucible_term f);
+};
+
+let crypto_verify_spec = do {
+    (xp, x) <- fresh_bytes "x";
+    (yp, y) <- fresh_bytes "y";
+
+    crucible_execute_func [xp, yp];
+
+    crucible_return (crucible_term {{
+      if x == y then (0 : [32]) else (~0 : [32])
+    }});
+};
+
+let fe_isnonzero_spec = do {
+    (fp, f) <- fresh_fe_bound "f" {{ e26 }} {{ e25 }};
+
+    crucible_execute_func [fp];
+
+    crucible_points_to fp (crucible_term f);
+    crucible_return (crucible_term {{
+      if value f == 0 then (0 : [32]) else (~0 : [32])
+    }});
+};
+
+let fe_isnegative_spec = do {
+    (fp, f) <- fresh_fe_bound "f" {{ e26 }} {{ e25 }};
+
+    crucible_execute_func [fp];
+
+    crucible_points_to fp (crucible_term f);
+    crucible_return (crucible_term {{
+      if value f > (0x01 # zero) then (1 : [32]) else (0 : [32])
+    }});
+};
+
+let fe_isequal_spec = do {
+    // NB: bounds are not mentioned in source file, but inherited from fe_sub.
+    (fp, f) <- fresh_fe_bound "f" {{ e25 }} {{ e24 }};
+    (gp, g) <- fresh_fe_bound "g" {{ e25 }} {{ e24 }};
+
+    crucible_execute_func [fp, gp];
+
+    crucible_points_to fp (crucible_term f);
+    crucible_points_to gp (crucible_term g);
+    crucible_return (crucible_term {{
+      if value f == value g then (1 : [32]) else (0 : [32])
+    }});
+};
+
 ////////////////////////////////////////////////////////////////////////////////
-// Verification
+// Base Verification
 ////////////////////////////////////////////////////////////////////////////////
 
 let prefix = "crypto_sign_ed25519_ref10_";
@@ -70,6 +155,18 @@ prove_print yices {{ add_good }};
 print "Proving abstract field subtraction...";
 prove_print yices {{ sub_good }};
 
+print "Proving fe_0...";
+crucible_llvm_verify m (refname "fe_0") [] false fe_0_spec yices;
+
+print "Proving fe_1...";
+crucible_llvm_verify m (refname "fe_1") [] false fe_1_spec yices;
+
+print "Proving fe_copy...";
+crucible_llvm_verify m (refname "fe_copy") [] false fe_copy_spec yices;
+
+print "Proving fe_cmov...";
+crucible_llvm_verify m (refname "fe_cmov") [] false fe_cmov_spec yices;
+
 print "Proving fe_neg...";
 crucible_llvm_verify m (refname "fe_neg") [] false (fe_unop_spec neg) yices;
 
@@ -77,4 +174,70 @@ print "Proving fe_add...";
 crucible_llvm_verify m (refname "fe_add") [] false (fe_binop_spec add) yices;
 
 print "Proving fe_sub...";
-crucible_llvm_verify m (refname "fe_sub") [] false (fe_binop_spec sub) yices;
+sub_ov <- crucible_llvm_verify m (refname "fe_sub") [] false (fe_binop_spec sub) yices;
+
+print "Proving crypto_verify_32...";
+verify_ov <- crucible_llvm_verify m "crypto_verify_32_ref" [] false crypto_verify_spec yices;
+
+print "Proving fe_isnonzero...";
+isnonzero_ov <- crucible_llvm_verify m (refname "fe_isnonzero") [verify_ov] false fe_isnonzero_spec yices;
+
+print "Proving fe_isnegative...";
+isnegative_ov <- crucible_llvm_verify m (refname "fe_isnegative") [] false fe_isnegative_spec yices;
+
+print "Proving fe_isequal...";
+crucible_llvm_verify m "fe_isequal" [sub_ov, isnonzero_ov] false fe_isequal_spec yices;
+
+////////////////////////////////////////////////////////////////////////////////
+// Extracted Field Element Models
+////////////////////////////////////////////////////////////////////////////////
+
+/*
+f <- fresh_symbolic "f" {| [10][32] |};
+g <- fresh_symbolic "g" {| [10][32] |};
+h <- fresh_symbolic "h" {| [10][32] |};
+s <- fresh_symbolic "s" {| [32][8] |};
+
+let ret = [("return", 1)];
+let outs = [("args[0]", 10)];
+let tb_outs = [("args[0]", 32)];
+let three_allocs = [("args[0]", 10), ("args[1]", 10), ("args[2]", 10)];
+let three_ins = [("args[0]", h, 10), ("args[1]", f, 10), ("args[2]", g, 10)];
+let two_allocs = [("args[0]", 10), ("args[1]", 10)];
+let two_ins = [("args[0]", h, 10), ("args[1]", f, 10)];
+let one_alloc = [("args[0]", 10)];
+let one_in = [("args[0]", h, 10)];
+let tb_allocs = [("args[0]", 32), ("args[1]", 10)];
+let tb_ins = [("args[0]", s, 32), ("args[1]", f, 10)];
+let fb_allocs = [("args[0]", 10), ("args[1]", 32)];
+let fb_ins = [("args[0]", h, 10), ("args[1]", s, 32)];
+
+let extract n = llvm_symexec m (refname n);
+mul_term <- extract "fe_mul" three_allocs three_ins outs true;
+sq_term <- extract "fe_sq" two_allocs two_ins outs true;
+fb_term <- extract "fe_frombytes" fb_allocs fb_ins outs true;
+tb_term <- extract "fe_tobytes" tb_allocs tb_ins tb_outs true;
+isneg_term <- extract "fe_isnegative" one_alloc one_in ret true;
+iseq_term <- extract "fe_isequal" two_allocs two_ins ret true;
+*/
+
+/*
+let fe_mul_spec = do {
+    (fp, f) <- fresh_fe_bound "f" {{ m26 }} {{ m25 }};
+    (gp, g) <- fresh_fe_bound "g" {{ m26 }} {{ m25 }};
+    hp <- crucible_alloc fe_type;
+
+    crucible_execute_func [hp, fp, gp];
+
+    crucible_points_to fp (crucible_term f);
+    crucible_points_to gp (crucible_term g);
+    assign_fe hp {{ mul f g }} {{ m25 }} {{ m24 }};
+};
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+// Trivial Extraction Verification Hack
+////////////////////////////////////////////////////////////////////////////////
+
+//print "Proving fe_mul...";
+//crucible_llvm_verify m (refname "fe_mul") [] false fe_mul_spec (quickcheck 100);
