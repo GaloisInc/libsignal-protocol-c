@@ -1,0 +1,25 @@
+Simple spec, monolithic:
+- [X] fe_0
+- [X] fe_1
+- [X] fe_copy
+- [X] fe_cmov
+- [X] fe_sub
+- [X] fe_add
+- [X] fe_neg
+- [X] crypto_verify_32
+Simple spec, compositional:
+- [X] fe_isnonzero
+- [X] fe_isequal
+- [X] fe_isnegative
+Extract and prove properties:
+- [ ] fe_frombytes
+- [ ] fe_tobytes
+- [ ] fe_mul
+- [ ] fe_sq
+Complex compositional proofs:
+- [ ] fe_invert
+- [ ] fe_sqrt
+- [ ] fe_pow22523
+- [ ] fe_mont_rhs
+- [ ] fe_montx_to_edy
+- [ ] ge_montx_to_p3
