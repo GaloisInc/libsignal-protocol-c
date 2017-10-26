@@ -8,18 +8,18 @@ Simple spec, monolithic:
 - [X] fe_neg
 - [X] crypto_verify_32
 Simple spec, compositional:
-- [X] fe_isnonzero
-- [X] fe_isequal
-- [X] fe_isnegative
+- [X] fe_isnonzero (fe_tobytes, crypto_verify32)
+- [X] fe_isequal (fe_sub, fe_isnonzero)
+- [X] fe_isnegative (fe_tobytes)
 Extract and prove properties:
 - [ ] fe_frombytes
 - [ ] fe_tobytes
-- [ ] fe_mul
-- [ ] fe_sq
+- [ ] fe_mul (assumed spec)
+- [ ] fe_sq (assumed spec)
 Complex compositional proofs:
-- [ ] fe_invert
-- [ ] fe_sqrt
-- [ ] fe_pow22523
-- [ ] fe_mont_rhs
-- [ ] fe_montx_to_edy
-- [ ] ge_montx_to_p3
+- [ ] fe_pow22523 (fe_mul, fe_sq)
+- [ ] fe_invert (fe_mul, fe_sq)
+- [ ] fe_sqrt (fe_frombytes, fe_pow22523, fe_sq, fe_mul, fe_0, fe_1, fe_cmov, fe_copy, fe_isequal)
+- [ ] fe_mont_rhs (fe_0, fe_1, fe_sq, fe_mul, fe_add)
+- [ ] fe_montx_to_edy (fe_1, fe_sub, fe_add, fe_invert, fe_mul)
+- [ ] ge_montx_to_p3 (fe_frombytes, fe_montx_to_edy, fe_mont_rhs, fe_sqrt, fe_mul, fe_invert, fe_neg, fe_cmov, fe_isnegative, fe_copy, fe_1, fe_isequal)

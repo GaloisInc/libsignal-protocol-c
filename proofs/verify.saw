@@ -44,7 +44,9 @@ let fe_0_spec = do {
 let fe_1_spec = do {
     hp <- crucible_alloc fe_type;
     crucible_execute_func [hp];
-    crucible_points_to hp (crucible_term {{ reverse (split (1 : [320]) : [10][32]) }});
+    crucible_points_to hp (crucible_term {{
+      reverse (split (1 : [320]) : [10][32])
+    }});
 };
 
 let fe_binop_spec op = do {
@@ -188,41 +190,7 @@ isnegative_ov <- crucible_llvm_verify m (refname "fe_isnegative") [] false fe_is
 print "Proving fe_isequal...";
 crucible_llvm_verify m "fe_isequal" [sub_ov, isnonzero_ov] false fe_isequal_spec yices;
 
-////////////////////////////////////////////////////////////////////////////////
-// Extracted Field Element Models
-////////////////////////////////////////////////////////////////////////////////
-
-/*
-f <- fresh_symbolic "f" {| [10][32] |};
-g <- fresh_symbolic "g" {| [10][32] |};
-h <- fresh_symbolic "h" {| [10][32] |};
-s <- fresh_symbolic "s" {| [32][8] |};
-
-let ret = [("return", 1)];
-let outs = [("args[0]", 10)];
-let tb_outs = [("args[0]", 32)];
-let three_allocs = [("args[0]", 10), ("args[1]", 10), ("args[2]", 10)];
-let three_ins = [("args[0]", h, 10), ("args[1]", f, 10), ("args[2]", g, 10)];
-let two_allocs = [("args[0]", 10), ("args[1]", 10)];
-let two_ins = [("args[0]", h, 10), ("args[1]", f, 10)];
-let one_alloc = [("args[0]", 10)];
-let one_in = [("args[0]", h, 10)];
-let tb_allocs = [("args[0]", 32), ("args[1]", 10)];
-let tb_ins = [("args[0]", s, 32), ("args[1]", f, 10)];
-let fb_allocs = [("args[0]", 10), ("args[1]", 32)];
-let fb_ins = [("args[0]", h, 10), ("args[1]", s, 32)];
-
-let extract n = llvm_symexec m (refname n);
-mul_term <- extract "fe_mul" three_allocs three_ins outs true;
-sq_term <- extract "fe_sq" two_allocs two_ins outs true;
-fb_term <- extract "fe_frombytes" fb_allocs fb_ins outs true;
-tb_term <- extract "fe_tobytes" tb_allocs tb_ins tb_outs true;
-isneg_term <- extract "fe_isnegative" one_alloc one_in ret true;
-iseq_term <- extract "fe_isequal" two_allocs two_ins ret true;
-*/
-
-/*
-let fe_mul_spec = do {
+let fe_mul1_spec = do {
     (fp, f) <- fresh_fe_bound "f" {{ m26 }} {{ m25 }};
     (gp, g) <- fresh_fe_bound "g" {{ m26 }} {{ m25 }};
     hp <- crucible_alloc fe_type;
@@ -231,13 +199,80 @@ let fe_mul_spec = do {
 
     crucible_points_to fp (crucible_term f);
     crucible_points_to gp (crucible_term g);
-    assign_fe hp {{ mul f g }} {{ m25 }} {{ m24 }};
+    assign_fe hp {{ ref_mul f g }} {{ m25post }} {{ m24post }};
 };
-*/
 
-////////////////////////////////////////////////////////////////////////////////
-// Trivial Extraction Verification Hack
-////////////////////////////////////////////////////////////////////////////////
+let fe_mul2_spec = do {
+    (fp, f) <- fresh_fe_bound "f" {{ m26 }} {{ m25 }};
+    (gp, g) <- fresh_fe_bound "g" {{ m26 }} {{ m25 }};
 
-//print "Proving fe_mul...";
-//crucible_llvm_verify m (refname "fe_mul") [] false fe_mul_spec (quickcheck 100);
+    crucible_execute_func [fp, fp, gp];
+
+    crucible_points_to gp (crucible_term g);
+    assign_fe fp {{ ref_mul f g }} {{ m25post }} {{ m24post }};
+};
+
+let fe_mul3_spec = do {
+    (fp, f) <- fresh_fe_bound "f" {{ m26 }} {{ m25 }};
+    (gp, g) <- fresh_fe_bound "g" {{ m26 }} {{ m25 }};
+
+    crucible_execute_func [gp, fp, gp];
+
+    crucible_points_to fp (crucible_term f);
+    assign_fe gp {{ ref_mul f g }} {{ m25post }} {{ m24post }};
+};
+
+let fe_sq1_spec = do {
+    (fp, f) <- fresh_fe /* _bound */ "f"; // {{ m26 }} {{ m25 }};
+    hp <- crucible_alloc fe_type;
+
+    crucible_execute_func [hp, fp];
+
+    crucible_points_to fp (crucible_term f);
+    assign_fe hp {{ ref_mul f f }} {{ m25post }} {{ m24post }};
+};
+
+let fe_sq2_spec = do {
+    (fp, f) <- fresh_fe /* _bound */ "f"; // {{ m26 }} {{ m25 }};
+
+    crucible_execute_func [fp, fp];
+
+    assign_fe fp {{ ref_mul f f }} {{ m25post }} {{ m24post }};
+};
+
+let fe_pow22523_spec = do {
+    (zp, z) <- fresh_fe "z";
+    outp <- crucible_alloc fe_type;
+
+    crucible_execute_func [outp, zp];
+
+    crucible_points_to zp (crucible_term z);
+    // TODO: real post-condition
+};
+
+let fe_invert_spec = do {
+    (zp, z) <- fresh_fe "z";
+    outp <- crucible_alloc fe_type;
+
+    crucible_execute_func [outp, zp];
+
+    crucible_points_to zp (crucible_term z);
+    // TODO: real post-condition
+};
+
+print "Assuming fe_mul...";
+mul1_ov <- crucible_llvm_unsafe_assume_spec m (refname "fe_mul") fe_mul1_spec;
+mul2_ov <- crucible_llvm_unsafe_assume_spec m (refname "fe_mul") fe_mul2_spec;
+mul3_ov <- crucible_llvm_unsafe_assume_spec m (refname "fe_mul") fe_mul3_spec;
+
+print "Assuming fe_sq...";
+sq1_ov <- crucible_llvm_unsafe_assume_spec m (refname "fe_sq") fe_sq1_spec;
+sq2_ov <- crucible_llvm_unsafe_assume_spec m (refname "fe_sq") fe_sq2_spec;
+
+let mul_ovs = [mul1_ov, mul2_ov, mul3_ov, sq1_ov, sq2_ov];
+
+print "Proving fe_pow22523 (but not really, yet)...";
+pow_ov <- crucible_llvm_verify m (refname "fe_pow22523") mul_ovs false fe_pow22523_spec (unint_yices ["ref_mul", "ref_sq"]);
+
+print "Proving fe_invert (but not really, yet)...";
+pow_ov <- crucible_llvm_verify m (refname "fe_invert") mul_ovs false fe_invert_spec (unint_yices ["ref_mul", "ref_sq"]);
