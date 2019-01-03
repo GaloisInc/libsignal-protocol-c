@@ -1,17 +1,15 @@
-import Cryptol::Extras
-
 value : [10][32] -> [512]
 value [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9] =
-  extendSigned x0 +
-  extendSigned x1 * (1 <<  26) +
-  extendSigned x2 * (1 <<  51) +
-  extendSigned x3 * (1 <<  77) +
-  extendSigned x4 * (1 << 102) +
-  extendSigned x5 * (1 << 128) +
-  extendSigned x6 * (1 << 153) +
-  extendSigned x7 * (1 << 179) +
-  extendSigned x8 * (1 << 204) +
-  extendSigned x9 * (1 << 230)
+  sext x0 +
+  sext x1 * (1 <<  26) +
+  sext x2 * (1 <<  51) +
+  sext x3 * (1 <<  77) +
+  sext x4 * (1 << 102) +
+  sext x5 * (1 << 128) +
+  sext x6 * (1 << 153) +
+  sext x7 * (1 << 179) +
+  sext x8 * (1 << 204) +
+  sext x9 * (1 << 230)
 
 ref_mul : [10][32] -> [10][32] -> [10][32]
 ref_mul = undefined
